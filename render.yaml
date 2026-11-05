@@ -1,0 +1,15 @@
+# Blueprint Render.com — deploy otomatis dari repo ini.
+# Di Render: New > Blueprint, pilih repo ini, Render membaca file ini.
+services:
+  - type: web
+    name: ashfall-arena
+    runtime: node
+    plan: free
+    # Build & start (Render menyuntikkan PORT lewat environment)
+    buildCommand: npm install
+    startCommand: node server/index.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

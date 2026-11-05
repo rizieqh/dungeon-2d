@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Multiplayer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Lobby: layar awal bergaya dark fantasy / soulslike -->
+  <main id="lobby" class="lobby-screen" aria-labelledby="lobbyTitle">
+    <!-- Partikel bara/debu melayang digambar di canvas ini (lihat app.js) -->
+    <canvas id="emberCanvas" class="ember-canvas" aria-hidden="true"></canvas>
+    <div class="lobby-vignette" aria-hidden="true"></div>
+
+    <div class="lobby-panel">
+      <header class="lobby-header">
+        <h1 id="lobbyTitle" class="game-title">ASHFALL ARENA</h1>
+        <p class="game-subtitle">Bertahan di kedalaman yang terlupakan</p>
+      </header>
+
+      <div class="field">
+        <label for="playerNameInput">Nama Pemain</label>
+        <input id="playerNameInput" type="text" maxlength="16" autocomplete="nickname"
+               placeholder="Masukkan namamu, pengembara">
+      </div>
+
+      <fieldset class="class-picker">
+        <legend>Class Senjata</legend>
+        <div class="class-options">
+          <label class="class-option">
+            <input type="radio" name="weaponClass" value="assault" checked>
+            <span class="class-icon" aria-hidden="true">🔫</span>
+            <strong>Assault</strong>
+            <small>Cepat, 1 peluru lurus</small>
+          </label>
+          <label class="class-option">
+            <input type="radio" name="weaponClass" value="shotgun">
+            <span class="class-icon" aria-hidden="true">💥</span>
+            <strong>Shotgun</strong>
+            <small>5 peluru menyebar</small>
+          </label>
+          <label class="class-option">
+            <input type="radio" name="weaponClass" value="sniper">
+            <span class="class-icon" aria-hidden="true">🎯</span>
+            <strong>Sniper</strong>
+            <small>Damage besar, tembus</small>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="difficulty-picker">
+        <legend>Tingkat Kesulitan</legend>
+        <div class="difficulty-options">
+          <label class="difficulty-option" data-difficulty="easy">
+            <input type="radio" name="difficulty" value="easy"><span>Easy</span>
+          </label>
+          <label class="difficulty-option" data-difficulty="medium">
+            <input type="radio" name="difficulty" value="medium" checked><span>Medium</span>
+          </label>
+          <label class="difficulty-option" data-difficulty="hard">
+            <input type="radio" name="difficulty" value="hard"><span>Hard</span>
+          </label>
+          <label class="difficulty-option" data-difficulty="impossible">
+            <input type="radio" name="difficulty" value="impossible"><span>Impossible</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <button id="createRoomButton" class="btn-primary" type="button" disabled>Create Room</button>
+
+      <p class="divider"><span>atau masuki ruang yang sudah ada</span></p>
+
+      <form id="joinForm">
+        <label for="roomCodeInput">Kode Room</label>
+        <div class="join-row">
+          <input id="roomCodeInput" type="text" maxlength="4" autocomplete="off"
+                 autocapitalize="characters" spellcheck="false" placeholder="A7B2">
+          <button id="joinRoomButton" class="btn-secondary" type="submit" disabled>Join</button>
+        </div>
+      </form>
+
+      <p id="lobbyMessage" role="alert"></p>
+      <p id="status" class="lobby-status">Menghubungkan...</p>
+    </div>
+  </main>
+
+  <div id="gameContainer" class="game-container" hidden>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- HUD: lapisan HTML transparan di atas canvas (tembus klik kecuali tombol copy) -->
+    <div class="hud" aria-label="Info permainan">
+      <!-- Kiri atas: pemain -->
+      <section id="hudPlayer" class="hud-panel hud-player" aria-label="Status pemain">
+        <div class="hud-player-header">
+          <span id="hudPlayerName" class="hud-player-name"></span>
+          <span id="hudClassBadge" class="hud-badge"></span>
+        </div>
+        <div id="hudHealth" class="hud-bar hud-health" role="progressbar"
+             aria-label="HP" aria-valuemin="0" aria-valuemax="10" aria-valuenow="10">
+          <div id="hudHealthFill" class="hud-bar-fill"></div>
+          <span id="hudHealthText" class="hud-bar-text"></span>
+        </div>
+        <div id="hudPlayerStats" class="hud-player-stats"></div>
+        <div id="hudUltimate" class="hud-ultimate" data-ready="false"
+             role="progressbar" aria-label="Energi ultimate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="hudUltimateFill" class="hud-ultimate-fill"></div>
+          <span class="hud-ultimate-label">ULT</span>
+        </div>
+      </section>
+
+      <!-- Kanan atas: kode room & wave -->
+      <section class="hud-panel hud-room" aria-label="Room dan wave">
+        <div>
+          <span class="hud-label">Room</span>
+          <div class="hud-room-code">
+            <strong id="hudRoomCode"></strong>
+            <button id="hudCopyButton" class="hud-copy" type="button"
+                    aria-label="Salin kode room" title="Salin kode room">Copy</button>
+          </div>
+        </div>
+        <span class="hud-divider" aria-hidden="true"></span>
+        <div id="hudWave" class="hud-wave">
+          <span class="hud-label">Wave</span>
+          <strong id="hudWaveNumber">1</strong>
+        </div>
+        <span class="hud-divider" aria-hidden="true"></span>
+        <div class="hud-difficulty">
+          <span class="hud-label">Difficulty</span>
+          <strong id="hudDifficulty" class="hud-diff-badge" data-difficulty="medium">Medium</strong>
+        </div>
+        <span id="hudCopyStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+      </section>
+
+      <!-- Tengah atas: boss (hanya saat wave boss & boss hidup) -->
+      <section id="hudBoss" class="hud-panel hud-boss" aria-label="Boss" hidden>
+        <div class="hud-boss-title">BOSS</div>
+        <div id="hudBossBar" class="hud-bar" role="progressbar"
+             aria-label="HP boss" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+          <div id="hudBossFill" class="hud-bar-fill"></div>
+          <span id="hudBossText" class="hud-bar-text"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- Pop-up pilihan upgrade; muncul saat wave selesai -->
+    <div id="upgradeOverlay" class="overlay" role="dialog" aria-modal="true"
+         aria-labelledby="upgradeTitle" hidden>
+      <h2 id="upgradeTitle">Wave selesai! Pilih satu upgrade</h2>
+      <div id="upgradeChoices" class="choices"></div>
+      <p id="upgradeWaiting" role="status" hidden>Menunggu pemain lain memilih...</p>
+    </div>
+
+    <!-- Game Over bergaya soulslike; muncul saat semua pemain downed -->
+    <div id="gameOverOverlay" class="overlay overlay-gameover" role="dialog" aria-modal="true"
+         aria-labelledby="gameOverTitle" hidden>
+      <h2 id="gameOverTitle" class="gameover-title">WAVE FAILED</h2>
+      <p id="gameOverSub" class="gameover-sub"></p>
+      <div class="gameover-actions">
+        <button id="restartWaveButton" class="btn-primary" type="button">Restart Wave</button>
+        <button id="backToLobbyButton" class="btn-secondary" type="button">Back to Lobby</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="dungeon.js"></script>
+  <script src="sfx.js"></script>
+  <script src="sprites.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "ashfall-arena",
+  "version": "1.0.0",
+  "description": "Game arena multiplayer top-down (Node.js + Express + Socket.io)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "keywords": ["game", "multiplayer", "socket.io", "canvas"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "socket.io": "^4.8.4"
+  }
+}

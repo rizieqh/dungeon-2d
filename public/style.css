@@ -1,0 +1,774 @@
+/* ==========================================================================
+   Dasar halaman
+   ========================================================================== */
+body {
+  margin: 0;
+  background: #07070b;
+  color: #e7e2d6;
+  font-family: sans-serif;
+  text-align: center;
+}
+
+.game-container {
+  position: relative;
+  width: 802px; /* 800px canvas + border 1px kiri dan kanan */
+  margin: 24px auto;
+}
+.game-container[hidden],
+.lobby-screen[hidden] {
+  display: none;
+}
+
+#gameCanvas {
+  display: block;
+  background: #111;
+  border: 1px solid #444;
+}
+
+/* ==========================================================================
+   Lobby — Dark Fantasy / Soulslike
+   ========================================================================== */
+.lobby-screen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+  /* Latar gelap dengan semburat bara di bawah */
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(120, 40, 10, 0.28), transparent 60%),
+    radial-gradient(ellipse at 50% 40%, #16131a, #09080c 70%);
+}
+/* Partikel bara/debu */
+.ember-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* Vignette gelap di tepi */
+.lobby-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 220px 60px rgba(0, 0, 0, 0.9);
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.55));
+}
+
+.lobby-panel {
+  position: relative;
+  z-index: 1;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 30px 32px 26px;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(28, 26, 32, 0.92), rgba(14, 13, 18, 0.95));
+  border: 1px solid transparent;
+  border-image: linear-gradient(160deg, #c8a24a, #5a4420 40%, #2a2420 70%, #b89246) 1;
+  border-radius: 4px;
+  box-shadow: 0 0 1px rgba(200, 162, 74, 0.6), 0 20px 60px rgba(0, 0, 0, 0.7);
+}
+
+.lobby-header {
+  margin-bottom: 22px;
+  text-align: center;
+}
+.game-title {
+  margin: 0;
+  font-family: 'Cinzel', 'Trajan Pro', Georgia, 'Times New Roman', serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  /* Gradasi emas-perak */
+  background: linear-gradient(180deg, #f6e7b0 0%, #d4af52 45%, #8a6c2a 60%, #f0dca0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 2px 10px rgba(212, 175, 82, 0.25);
+}
+.game-subtitle {
+  margin: 6px 0 0;
+  font-family: Georgia, serif;
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.08em;
+  color: #8f8674;
+}
+
+.lobby-panel label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a917d;
+}
+.lobby-panel input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 15px;
+  color: #f3eedf;
+  background: linear-gradient(180deg, #14131a, #0c0b10);
+  border: 1px solid #4a4335;
+  border-radius: 3px;
+}
+.lobby-panel input[type="text"]::placeholder { color: #6a6354; }
+.lobby-panel input:focus-visible,
+.lobby-panel button:focus-visible,
+.lobby-panel .class-option:has(input:focus-visible),
+.lobby-panel .difficulty-option:has(input:focus-visible) {
+  outline: 2px solid #d4af52;
+  outline-offset: 2px;
+}
+.lobby-panel .field { margin-bottom: 16px; }
+
+/* Tombol slate-metal dengan border emas */
+.btn-primary, .btn-secondary {
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f3eadf;
+  background: linear-gradient(180deg, #2b2a33, #15141a);
+  border: 1px solid #6e5a2e;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.1s;
+}
+.btn-primary {
+  width: 100%;
+  padding: 13px;
+  font-size: 15px;
+  margin-top: 4px;
+}
+.btn-primary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) {
+  border-color: #d4af52;
+  box-shadow: 0 0 16px rgba(212, 175, 82, 0.45), inset 0 0 10px rgba(212, 175, 82, 0.15);
+  transform: translateY(-1px);
+}
+.btn-primary:disabled, .btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.divider {
+  position: relative;
+  margin: 22px 0 16px;
+  text-align: center;
+}
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #4a4335, transparent);
+}
+.divider span {
+  position: relative;
+  padding: 0 12px;
+  background: linear-gradient(180deg, rgba(28, 26, 32, 0.95), rgba(14, 13, 18, 0.95));
+  font-size: 11px;
+  font-style: italic;
+  color: #7a7263;
+}
+
+.class-picker, .difficulty-picker {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+.class-picker legend, .difficulty-picker legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a917d;
+}
+
+/* Kartu class berjejer horizontal (3 kolom) bergaya dark fantasy */
+.class-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.lobby-panel .class-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 8px;
+  text-align: center;
+  color: #d8d2c4;
+  background: linear-gradient(180deg, #14131a, #0d0c11);
+  border: 1px solid #3a3528;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s, transform 0.12s;
+}
+.lobby-panel .class-option:hover {
+  border-color: #c89a3e;
+  box-shadow: 0 0 14px rgba(212, 175, 82, 0.35);
+  transform: translateY(-2px);
+}
+.class-option:has(input:checked) {
+  border-color: #d4af52;
+  background: linear-gradient(180deg, #2a2312, #171308);
+  box-shadow: 0 0 16px rgba(212, 175, 82, 0.4), inset 0 0 10px rgba(212, 175, 82, 0.1);
+}
+.class-option input {
+  position: absolute;
+  opacity: 0;
+  width: 0; height: 0;
+}
+.class-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.class-option strong {
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  color: #e7dfca;
+}
+.class-option small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #8f8674;
+}
+
+/* Difficulty selector: 4 pilihan berjajar */
+.difficulty-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+}
+.difficulty-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  background: linear-gradient(180deg, #14131a, #0d0c11);
+  border: 1px solid #3a3528;
+  border-radius: 3px;
+}
+.difficulty-option input {
+  position: absolute;
+  opacity: 0;
+  width: 0; height: 0;
+}
+.difficulty-option span { color: #c9c2b2; }
+.difficulty-option[data-difficulty="easy"]:has(input:checked)       { border-color: #5bbf6a; box-shadow: 0 0 12px rgba(91, 191, 106, 0.4); }
+.difficulty-option[data-difficulty="medium"]:has(input:checked)     { border-color: #d4af52; box-shadow: 0 0 12px rgba(212, 175, 82, 0.4); }
+.difficulty-option[data-difficulty="hard"]:has(input:checked)       { border-color: #e08b3a; box-shadow: 0 0 12px rgba(224, 139, 58, 0.4); }
+.difficulty-option[data-difficulty="impossible"]:has(input:checked) { border-color: #e0463a; box-shadow: 0 0 14px rgba(224, 70, 58, 0.5); }
+
+#roomCodeInput {
+  text-transform: uppercase;
+  letter-spacing: 6px;
+  text-align: center;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.join-row {
+  display: flex;
+  gap: 10px;
+}
+.join-row input { flex: 1; min-width: 0; }
+.btn-secondary {
+  padding: 11px 18px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+#lobbyMessage {
+  min-height: 1.3em;
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: #e0675f;
+}
+.lobby-status {
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: #6a6354;
+}
+
+/* ==========================================================================
+   Overlay pilihan upgrade (kartu bergaya RPG dark sci-fi)
+   ========================================================================== */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20; /* di atas HUD */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  /* Glassmorphism: latar gelap + blur ke seluruh layar di belakang modal */
+  background: radial-gradient(ellipse at center, rgba(20, 22, 38, 0.72), rgba(4, 5, 12, 0.88));
+  backdrop-filter: blur(7px) saturate(120%);
+  -webkit-backdrop-filter: blur(7px) saturate(120%);
+}
+.overlay[hidden] {
+  display: none;
+}
+.overlay h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #f0f2ff;
+  text-shadow: 0 0 18px rgba(120, 160, 255, 0.5);
+}
+
+.choices {
+  display: flex;
+  gap: 20px;
+  perspective: 900px;
+}
+
+/* --- Kartu upgrade --- */
+.card {
+  --rarity: #9aa4b2;
+  --rarity-glow: rgba(154, 164, 178, 0.6);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 190px;
+  padding: 22px 16px 20px;
+  color: #eef1f8;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)) ,
+    linear-gradient(160deg, #1c2030, #0d0f18);
+  border: 2px solid var(--rarity);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5) inset,
+    0 0 18px var(--rarity-glow),
+    0 10px 28px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  animation: card-glow 2.4s ease-in-out infinite;
+}
+/* Pita rarity di atas kartu */
+.card::before {
+  content: attr(data-rarity-label);
+  position: absolute;
+  top: -11px;
+  padding: 2px 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #0a0c12;
+  background: var(--rarity);
+  border-radius: 999px;
+  box-shadow: 0 0 10px var(--rarity-glow);
+}
+.card:hover,
+.card:focus-visible {
+  transform: translateY(-8px) scale(1.06);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5) inset,
+    0 0 30px var(--rarity-glow),
+    0 16px 36px rgba(0, 0, 0, 0.6);
+  outline: none;
+}
+.card:disabled {
+  cursor: default;
+  filter: grayscale(0.5) brightness(0.8);
+  animation: none;
+}
+.card:disabled:hover {
+  transform: none;
+}
+
+.card-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 8px var(--rarity-glow));
+}
+.card-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--rarity);
+}
+.card-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(238, 241, 248, 0.82);
+}
+
+/* Warna per rarity (dipakai lewat data-rarity) */
+.card[data-rarity="common"]    { --rarity: #b7c0cc; --rarity-glow: rgba(183, 192, 204, 0.45); }
+.card[data-rarity="rare"]      { --rarity: #4aa3ff; --rarity-glow: rgba(74, 163, 255, 0.6); }
+.card[data-rarity="epic"]      { --rarity: #b265ff; --rarity-glow: rgba(178, 101, 255, 0.65); }
+.card[data-rarity="legendary"] { --rarity: #ffc53d; --rarity-glow: rgba(255, 197, 61, 0.75); }
+
+@keyframes card-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(0,0,0,0.5) inset, 0 0 16px var(--rarity-glow), 0 10px 28px rgba(0,0,0,0.5); }
+  50%      { box-shadow: 0 0 0 1px rgba(0,0,0,0.5) inset, 0 0 26px var(--rarity-glow), 0 10px 28px rgba(0,0,0,0.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; transition: none; }
+  .card:hover, .card:focus-visible { transform: none; }
+}
+
+/* ==========================================================================
+   HUD: lapisan HTML transparan di atas canvas
+   ========================================================================== */
+.hud {
+  --hud-bg: rgba(14, 14, 20, 0.55);
+  --hud-border: rgba(255, 255, 255, 0.12);
+  --hud-radius: 10px;
+
+  position: absolute;
+  inset: 1px; /* di dalam border canvas */
+  z-index: 10;
+  /* Seluruh HUD tembus klik supaya klik tembak tetap sampai ke canvas;
+     hanya kontrol tertentu (tombol copy) yang bisa diklik */
+  pointer-events: none;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  text-align: left;
+  user-select: none;
+}
+
+.hud-panel {
+  position: absolute;
+  box-sizing: border-box; /* lebar panel sudah termasuk padding, agar posisi mudah dihitung */
+  padding: 8px 12px;
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  border-radius: var(--hud-radius);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* --- Kiri atas: pemain --- */
+.hud-player {
+  top: 10px;
+  left: 10px;
+  width: 220px;
+}
+.hud-player-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.hud-player-name {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hud-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #111;
+  border-radius: 999px;
+}
+.hud-badge[data-class="assault"] { background: #ffb020; }
+.hud-badge[data-class="shotgun"] { background: #ff7a45; }
+.hud-badge[data-class="sniper"] { background: #8ff3ff; }
+
+.hud-bar {
+  position: relative;
+  height: 16px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+}
+.hud-bar-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transition: transform 0.15s ease-out, background-color 0.3s;
+}
+.hud-bar-text {
+  position: relative; /* di atas isi bar */
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.hud-health .hud-bar-fill { background: #4cd964; }
+.hud-health[data-level="mid"] .hud-bar-fill { background: #ffc83d; }
+.hud-health[data-level="low"] .hud-bar-fill { background: #ff4d4d; }
+
+.hud-player-stats {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.hud-player[data-dead="true"] .hud-player-name::after {
+  content: ' (mati)';
+  color: #ff8888;
+  font-weight: 400;
+}
+
+/* --- Kanan atas: room & wave --- */
+.hud-room {
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hud-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+.hud-room-code {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hud-room-code strong {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 18px;
+  letter-spacing: 0.15em;
+}
+.hud-copy {
+  pointer-events: auto; /* satu-satunya kontrol HUD yang bisa diklik */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.hud-copy:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+.hud-copy:focus-visible {
+  outline: 2px solid #ffb020;
+  outline-offset: 2px;
+}
+.hud-copy[data-copied="true"] {
+  color: #111;
+  background: #4cd964;
+  border-color: #4cd964;
+}
+.hud-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--hud-border);
+}
+.hud-wave strong {
+  font-size: 18px;
+}
+.hud-wave[data-boss="true"] strong {
+  color: #ff5a5a;
+}
+
+/* --- Tengah atas: boss --- */
+/* Lebar 320px muat di antara panel kiri (x 10-230) dan panel kanan (mulai sekitar x 590) */
+.hud-boss {
+  top: 10px;
+  left: 50%;
+  width: 320px;
+  transform: translateX(-50%);
+  text-align: center;
+  border-color: rgba(255, 60, 60, 0.45);
+}
+.hud-boss[hidden] {
+  display: none;
+}
+.hud-boss-title {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  color: #ff6b6b;
+  text-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
+}
+.hud-boss .hud-bar {
+  height: 18px;
+  border-color: rgba(255, 60, 60, 0.5);
+}
+.hud-boss .hud-bar-fill {
+  background: linear-gradient(90deg, #8a0000, #e01b1b);
+}
+.hud-boss .hud-bar-text {
+  line-height: 18px;
+}
+
+/* Hormati preferensi pengguna untuk mengurangi animasi */
+@media (prefers-reduced-motion: reduce) {
+  .hud-bar-fill {
+    transition: none;
+  }
+}
+
+/* Utilitas: teks hanya untuk pembaca layar */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Badge difficulty di HUD
+   ========================================================================== */
+.hud-difficulty strong {
+  font-size: 14px;
+}
+.hud-diff-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #0c0c10;
+}
+.hud-diff-badge[data-difficulty="easy"]       { background: #5bbf6a; }
+.hud-diff-badge[data-difficulty="medium"]     { background: #d4af52; }
+.hud-diff-badge[data-difficulty="hard"]       { background: #e08b3a; }
+.hud-diff-badge[data-difficulty="impossible"] { background: #e0463a; color: #fff; }
+
+/* ==========================================================================
+   Game Over — Soulslike "WAVE FAILED"
+   ========================================================================== */
+.overlay-gameover {
+  gap: 10px;
+  background: radial-gradient(ellipse at center, rgba(40, 0, 0, 0.72), rgba(0, 0, 0, 0.92));
+  backdrop-filter: blur(5px) saturate(80%);
+  -webkit-backdrop-filter: blur(5px) saturate(80%);
+}
+.gameover-title {
+  margin: 0;
+  font-family: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  font-size: 68px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #8a1212;
+  text-shadow: 0 0 24px rgba(180, 0, 0, 0.7), 0 0 4px rgba(0, 0, 0, 0.9);
+  /* Muncul perlahan: meredup masuk & sedikit membesar, lalu berdenyut lambat */
+  animation: gameover-appear 1.4s ease-out both, gameover-pulse 3.5s ease-in-out 1.4s infinite;
+}
+.gameover-sub {
+  margin: 0 0 18px;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 15px;
+  color: #b89a94;
+  animation: gameover-fade 2s ease-out 0.6s both;
+}
+.gameover-actions {
+  display: flex;
+  gap: 16px;
+  animation: gameover-fade 1.5s ease-out 1.2s both;
+}
+.gameover-actions .btn-primary,
+.gameover-actions .btn-secondary {
+  width: auto;
+  padding: 13px 26px;
+  margin: 0;
+}
+
+@keyframes gameover-appear {
+  0%   { opacity: 0; transform: scale(1.5); letter-spacing: 0.4em; filter: blur(6px); }
+  100% { opacity: 1; transform: scale(1);   letter-spacing: 0.14em; filter: blur(0); }
+}
+@keyframes gameover-pulse {
+  0%, 100% { text-shadow: 0 0 24px rgba(180, 0, 0, 0.6), 0 0 4px rgba(0, 0, 0, 0.9); }
+  50%      { text-shadow: 0 0 40px rgba(220, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.9); }
+}
+@keyframes gameover-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gameover-title, .gameover-sub, .gameover-actions { animation: none; }
+}
+
+/* ==========================================================================
+   Ultimate gauge di HUD
+   ========================================================================== */
+.hud-ultimate {
+  position: relative;
+  height: 14px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(120, 90, 200, 0.5);
+  border-radius: 6px;
+}
+.hud-ultimate-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #5b3fb0, #9a6bff);
+  transition: transform 0.15s ease-out;
+}
+.hud-ultimate-label {
+  position: relative;
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  line-height: 14px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+/* Siap dipakai: menyala & berdenyut, ajakan tekan Spasi */
+.hud-ultimate[data-ready="true"] {
+  border-color: #c9a3ff;
+  box-shadow: 0 0 12px rgba(154, 107, 255, 0.7);
+  animation: ult-ready 1.2s ease-in-out infinite;
+}
+.hud-ultimate[data-ready="true"] .hud-ultimate-fill {
+  background: linear-gradient(90deg, #8a5bff, #d4b3ff);
+}
+.hud-ultimate[data-ready="true"] .hud-ultimate-label::after {
+  content: ' — SPASI';
+  color: #e9d8ff;
+}
+@keyframes ult-ready {
+  0%, 100% { box-shadow: 0 0 10px rgba(154, 107, 255, 0.6); }
+  50%      { box-shadow: 0 0 20px rgba(154, 107, 255, 0.95); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-ultimate[data-ready="true"] { animation: none; }
+}
