@@ -90,6 +90,18 @@ const REVIVE_TIME_S = 3; // lama berdiri dekat teman downed untuk membangunkanny
 const REVIVE_RADIUS = 45; // jarak maksimal penyelamat ke pemain downed (px)
 const REVIVE_HP_FRACTION = 0.5; // HP yang dipulihkan saat revive (50% dari maxHp)
 
+// --- Wave Mutator: tantangan acak tiap naik wave (mulai wave 2) ---
+// hpMul/speedMul dikalikan ke stat musuh saat spawn. Mutator 'toxicFog' tidak mengubah musuh;
+// efeknya (penglihatan menyempit) digambar client dari id mutator.
+const MUTATOR_START_WAVE = 2;
+const WAVE_MUTATORS = {
+  toxicFog: { label: 'Toxic Fog', desc: 'Kabut beracun menyempitkan penglihatanmu', hpMul: 1, speedMul: 1 },
+  frenzy: { label: 'Frenzy', desc: 'Musuh bergerak 25% lebih cepat', hpMul: 1, speedMul: 1.25 },
+  armored: { label: 'Armored', desc: 'Musuh mendapat 50% HP tambahan', hpMul: 1.5, speedMul: 1 },
+};
+// Pengali mutator aktif untuk satu room (1 jika tidak ada mutator)
+const mutatorMultipliers = (room) => WAVE_MUTATORS[room.mutator] || { hpMul: 1, speedMul: 1 };
+
 // --- Tingkat kesulitan ---
 // Skala dikalikan ke stat musuh saat spawn. dropMul menyesuaikan peluang item (makin sulit,
 // makin jarang drop). label dipakai client untuk badge HUD.
@@ -108,11 +120,37 @@ const ITEM_DROP_CHANCE = 0.15; // peluang dasar musuh biasa menjatuhkan item (me
 const BOSS_ITEM_DROPS = 3; // boss selalu menjatuhkan beberapa item
 const ITEM_RADIUS = 10; // setengah sisi hitbox pickup
 const ITEM_LIFETIME_S = 15; // item hilang jika tidak diambil
+const MEDKIT_HEAL = 3; // HP yang dipulihkan medkit
+const DOUBLE_DAMAGE_DURATION_S = 5;
+const DOUBLE_DAMAGE_MULTIPLIER = 2;
 // type: efek saat diambil. Bobot menentukan kemunculan relatif.
+//  canPickup(p): item hanya terambil jika true (tetap di lantai jika tidak, mis. medkit saat HP penuh)
+//  apply(p, room): menerapkan efek; boleh mengembalikan { heal } untuk umpan balik di client
 const ITEM_TYPES = {
-  medkit: { weight: 5, color: '#4cd964', apply: (p) => { p.hp = Math.min(p.maxHp, round2(p.hp + 3)); } },
-  speed: { weight: 3, color: '#56b4ff', apply: (p) => { p.speed = Math.min(p.speed + 1, MAX_PLAYER_SPEED); } },
-  damage: { weight: 2, color: '#ff9d3d', apply: (p) => { p.damage = round2(p.damage + 1); } },
+  medkit: {
+    weight: 5, color: '#4cd964',
+    canPickup: (p) => p.hp < p.maxHp,
+    apply: (p) => {
+      const before = p.hp;
+      p.hp = Math.min(p.maxHp, round2(p.hp + MEDKIT_HEAL));
+      return { heal: round2(p.hp - before) }; // jumlah HP yang benar-benar bertambah
+    },
+  },
+  shield: {
+    weight: 3, color: '#9a8cff',
+    canPickup: (p) => !p.shield, // sudah punya shield: jangan terbuang
+    apply: (p) => { p.shield = true; },
+  },
+  nuke: {
+    weight: 1, color: '#ff4d4d',
+    apply: (p, room) => ({ killed: nukeEnemies(room, p) }),
+  },
+  doubleDamage: {
+    weight: 2, color: '#ffcf33',
+    apply: (p) => { p.damageBoostUntil = Date.now() + DOUBLE_DAMAGE_DURATION_S * 1000; },
+  },
+  speed: { weight: 2, color: '#56b4ff', apply: (p) => { p.speed = Math.min(p.speed + 1, MAX_PLAYER_SPEED); } },
+  damage: { weight: 1, color: '#ff9d3d', apply: (p) => { p.damage = round2(p.damage + 1); } },
 };
 const ITEM_TYPE_TOTAL_WEIGHT = Object.values(ITEM_TYPES).reduce((s, t) => s + t.weight, 0);
 // Jika tidak ada input baru selama ini, gerakan pemain di-reset ke nol. Client mengirim
@@ -130,6 +168,9 @@ const createPlayerStats = (weaponClass) => ({
   isDowned: false, // HP habis: berlutut, tidak bisa gerak/tembak, bisa di-revive teman
   reviveProgress: 0, // 0..REVIVE_TIME_S, kemajuan revive oleh pemain lain
   ultimate: 0, // 0..ULTIMATE_MAX, energi jurus pamungkas
+  shield: false, // melindungi dari 1 serangan berikutnya
+  damageBoostUntil: 0, // Date.now() sampai kapan damage ganda aktif (tidak dipakai client)
+  damageBoostLeft: 0, // sisa detik damage ganda (untuk indikator aura di client)
 });
 
 const PROJECTILE_LIFETIME = 1; // detik
@@ -295,6 +336,9 @@ function overlapsAABB(ax, ay, aHalf, bx, by, bHalf) {
 //   downed    { playerId, x, y }                 - pemain jatuh (HP habis)
 //   revived   { playerId, x, y }                 - pemain dibangunkan kembali
 //   pickup    { itemType, playerId, x, y, color } - pemain mengambil item
+//   shieldBreak { playerId, x, y }                - shield pemain menyerap 1 serangan
+//   nuke      { x, y }                            - item Nuke meledakkan semua musuh non-boss
+//   pickup    juga membawa heal (HP yang benar-benar pulih, untuk medkit)
 //   ultimate  { weapon, ownerId, x, y }           - pemain memicu jurus pamungkas
 //   ultShockwave { x, y, radius }                 - efek area shockwave (Shotgun)
 //   ultBeam   { x, y, angle, length }             - laser raksasa (Sniper)
@@ -504,7 +548,7 @@ const getRoomOf = (socketId) => {
 // Menggerakkan pemain dengan tabrakan AABB: kotak pemain (2 x PLAYER_RADIUS) dicek
 // terhadap tile dinding (bernilai 1). Jika menabrak, posisi dirapatkan ke tepi dinding.
 function movePlayer(room, player, moveX, moveY) {
-  const next = Dungeon.moveWithCollision(
+  const next = Dungeon.slideMove(
     room.dungeon.grid, player.x, player.y, moveX, moveY, PLAYER_RADIUS
   );
   player.x = next.x;
@@ -550,7 +594,8 @@ function spawnEnemy(room) {
   if (!pos) return;
 
   const scale = room.difficultyScale;
-  const hp = round2(type.hp * (1 + (room.wave - 1) * ENEMY_HP_GROWTH_PER_WAVE) * scale.hp);
+  const mut = mutatorMultipliers(room);
+  const hp = round2(type.hp * (1 + (room.wave - 1) * ENEMY_HP_GROWTH_PER_WAVE) * scale.hp * mut.hpMul);
   room.enemies.push({
     id: room.nextEnemyId++,
     type: typeKey,
@@ -558,7 +603,7 @@ function spawnEnemy(room) {
     y: pos.y,
     hp,
     maxHp: hp,
-    speed: round2(type.speed * scale.speed),
+    speed: round2(type.speed * scale.speed * mut.speedMul),
     radius: type.radius,
     wallRadius: type.wallRadius,
     color: type.color,
@@ -577,7 +622,8 @@ function spawnBoss(room) {
   if (!pos) return;
 
   const scale = room.difficultyScale;
-  const hp = Math.round(BOSS_TYPE.hp(room.wave) * scale.hp);
+  const mut = mutatorMultipliers(room);
+  const hp = Math.round(BOSS_TYPE.hp(room.wave) * scale.hp * mut.hpMul);
   room.enemies.push({
     id: room.nextEnemyId++,
     type: 'boss',
@@ -585,7 +631,7 @@ function spawnBoss(room) {
     y: pos.y,
     hp,
     maxHp: hp,
-    speed: round2(BOSS_TYPE.speed * scale.speed),
+    speed: round2(BOSS_TYPE.speed * scale.speed * mut.speedMul),
     radius: BOSS_TYPE.radius,
     wallRadius: BOSS_TYPE.wallRadius,
     color: BOSS_TYPE.color,
@@ -854,7 +900,7 @@ function updateEnemyProjectiles(room, dt) {
 
 // Kurangi HP satu musuh. Kirim event hit/kill (dengan flag crit), jatuhkan item saat mati,
 // dan isi energi ultimate penyerang. ownerId boleh null (mis. efek area tanpa pemilik jelas).
-function damageEnemy(room, enemy, amount, hitX, hitY, crit, ownerId) {
+function damageEnemy(room, enemy, amount, hitX, hitY, crit, ownerId, opts = {}) {
   enemy.hp = round2(enemy.hp - amount);
   if (enemy.hp <= 0) {
     const index = room.enemies.indexOf(enemy);
@@ -869,12 +915,25 @@ function damageEnemy(room, enemy, amount, hitX, hitY, crit, ownerId) {
       for (let n = 0; n < BOSS_ITEM_DROPS; n++) {
         spawnItem(room, enemy.x + randomInt(-30, 30), enemy.y + randomInt(-30, 30));
       }
-    } else if (Math.random() < ITEM_DROP_CHANCE * room.difficultyScale.dropMul) {
+    } else if (!opts.noDrop && Math.random() < ITEM_DROP_CHANCE * room.difficultyScale.dropMul) {
       spawnItem(room, enemy.x, enemy.y);
     }
   } else {
     pushEvent(room, { type: 'hit', x: hitX, y: hitY, color: enemy.color, damage: amount, crit });
   }
+}
+
+// Nuke: ledakkan semua musuh non-boss di room. Tanpa drop item dan tanpa energi ultimate,
+// supaya satu nuke tidak berantai memunculkan item lain atau langsung mengisi gauge.
+function nukeEnemies(room, player) {
+  let killed = 0;
+  for (const enemy of [...room.enemies]) {
+    if (enemy.isBoss) continue;
+    damageEnemy(room, enemy, enemy.hp, enemy.x, enemy.y, false, null, { noDrop: true });
+    killed++;
+  }
+  pushEvent(room, { type: 'nuke', x: player.x, y: player.y });
+  return killed;
 }
 
 // Tambah energi ultimate pemain (dibatasi 0..ULTIMATE_MAX)
@@ -1056,6 +1115,14 @@ function applyEnemyContactDamage(room) {
 function damagePlayer(room, player, amount, nowMs) {
   if (player.isDowned || nowMs < (room.invulnerableUntil[player.id] || 0)) return false;
 
+  // Shield menyerap 1 serangan penuh: tanpa kehilangan HP, tetap diberi masa kebal sesaat
+  if (player.shield) {
+    player.shield = false;
+    room.invulnerableUntil[player.id] = nowMs + INVULNERABILITY_MS;
+    pushEvent(room, { type: 'shieldBreak', playerId: player.id, x: player.x, y: player.y });
+    return true;
+  }
+
   player.hp = Math.max(0, round2(player.hp - amount));
   room.invulnerableUntil[player.id] = nowMs + INVULNERABILITY_MS;
   pushEvent(room, { type: 'playerHit', playerId: player.id, x: player.x, y: player.y });
@@ -1130,13 +1197,18 @@ function updateItems(room, dt) {
       continue;
     }
 
+    const type = ITEM_TYPES[item.type];
     const picker = getAlivePlayers(room).find(
-      (p) => overlapsAABB(p.x, p.y, PLAYER_RADIUS, item.x, item.y, ITEM_RADIUS)
+      (p) => overlapsAABB(p.x, p.y, PLAYER_RADIUS, item.x, item.y, ITEM_RADIUS) &&
+        (!type.canPickup || type.canPickup(p))
     );
     if (picker) {
-      ITEM_TYPES[item.type].apply(picker);
+      const result = type.apply(picker, room) || {};
       room.items.splice(i, 1);
-      pushEvent(room, { type: 'pickup', itemType: item.type, playerId: picker.id, x: item.x, y: item.y, color: item.color });
+      pushEvent(room, {
+        type: 'pickup', itemType: item.type, playerId: picker.id,
+        x: item.x, y: item.y, color: item.color, heal: result.heal || 0,
+      });
     }
   }
 }
@@ -1174,9 +1246,20 @@ function startUpgradePhase(room) {
   }
 }
 
-function startWave(room, number) {
+// Pilih mutator acak, dihindari sama dengan mutator wave sebelumnya agar tidak monoton
+function pickRandomMutator(previous) {
+  const ids = Object.keys(WAVE_MUTATORS).filter((id) => id !== previous);
+  return ids[randomInt(0, ids.length - 1)];
+}
+
+// forcedMutator: undefined = acak (wave >= MUTATOR_START_WAVE); null/id = pakai nilai itu
+// (dipakai Restart Wave agar wave yang diulang tetap punya tantangan yang sama)
+function startWave(room, number, forcedMutator) {
   room.wave = number;
   room.waveState = 'IN_PROGRESS';
+  room.mutator = forcedMutator !== undefined
+    ? forcedMutator
+    : (number >= MUTATOR_START_WAVE ? pickRandomMutator(room.mutator) : null);
   // Wave kelipatan BOSS_WAVE_INTERVAL: hanya 1 boss (dihitung di bawah), tanpa musuh biasa
   room.isBossWave = number % BOSS_WAVE_INTERVAL === 0;
   room.bossSpawned = false;
@@ -1209,11 +1292,12 @@ function restartCurrentWave(room) {
     const spawn = randomSpawnPoint(room);
     Object.assign(player, {
       x: spawn.x, y: spawn.y, hp: player.maxHp, isDowned: false, reviveProgress: 0,
+      shield: false, damageBoostUntil: 0, damageBoostLeft: 0, // buff dari percobaan gagal tidak dibawa
     });
     room.inputs[player.id] = { dx: 0, dy: 0 };
   }
   for (const id in room.invulnerableUntil) delete room.invulnerableUntil[id];
-  startWave(room, failedWave);
+  startWave(room, failedWave, room.mutator); // mutator wave yang sama
 }
 
 function checkUpgradesComplete(room) {
@@ -1244,6 +1328,9 @@ function checkWaveProgress(room) {
 function updateRoom(room, dt, nowMs) {
   for (const id in room.players) {
     const player = room.players[id];
+
+    // Sisa waktu buff 2x Damage (dibulatkan 0,1 detik) untuk indikator aura di client
+    player.damageBoostLeft = Math.max(0, Math.round(((player.damageBoostUntil - nowMs) / 1000) * 10) / 10);
 
     // Input basi (client macet, tab dibekukan, atau keyup hilang): hentikan pemain
     if (nowMs - room.lastInputAt[id] > INPUT_TIMEOUT_MS) {
@@ -1405,7 +1492,8 @@ io.on('connection', (socket) => {
         y: player.y,
         vx: Math.cos(pelletAngle) * speed,
         vy: Math.sin(pelletAngle) * speed,
-        damage: player.damage,
+        // Buff 2x Damage aktif: damage peluru dikali sesuai pengali
+        damage: round2(player.damage * (nowMs < player.damageBoostUntil ? DOUBLE_DAMAGE_MULTIPLIER : 1)),
         radius: weapon.radius,
         lifetime: PROJECTILE_LIFETIME,
       };
@@ -1476,6 +1564,9 @@ setInterval(() => {
       items: room.items,
       wave: room.wave,
       waveState: room.waveState,
+      mutator: room.mutator
+        ? { id: room.mutator, label: WAVE_MUTATORS[room.mutator].label, desc: WAVE_MUTATORS[room.mutator].desc }
+        : null,
       reviveTime: REVIVE_TIME_S,
       events: room.events,
     });

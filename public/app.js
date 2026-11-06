@@ -31,6 +31,7 @@ let wave = 1;
 let waveState = 'IN_PROGRESS'; // 'IN_PROGRESS' | 'WAVE_CLEAR' | 'GAME_OVER'
 let roomDifficulty = 'medium';
 let roomDifficultyLabel = 'Medium';
+let waveMutator = null; // { id, label, desc } atau null jika wave tanpa mutator
 
 // Elemen modal Game Over
 const gameOverOverlay = document.getElementById('gameOverOverlay');
@@ -72,6 +73,13 @@ const hud = {
   copyStatus: document.getElementById('hudCopyStatus'),
   ultimate: document.getElementById('hudUltimate'),
   ultimateFill: document.getElementById('hudUltimateFill'),
+  mutatorBox: document.getElementById('hudMutatorBox'),
+  mutatorDivider: document.getElementById('hudMutatorDivider'),
+  mutator: document.getElementById('hudMutator'),
+  announce: document.getElementById('waveAnnounce'),
+  announceTitle: document.getElementById('waveAnnounceTitle'),
+  announceMutator: document.getElementById('waveAnnounceMutator'),
+  announceDesc: document.getElementById('waveAnnounceDesc'),
   wave: document.getElementById('hudWave'),
   waveNumber: document.getElementById('hudWaveNumber'),
   difficulty: document.getElementById('hudDifficulty'),
@@ -142,6 +150,14 @@ const SCREEN_SHAKE_DECAY = 0.0001; // sisa magnitudo per detik (meluruh cepat)
 // Critical hit (warna angka emas)
 const CRIT_DAMAGE_COLOR = '#ffd34d';
 
+// Item & buff
+const HEAL_NUMBER_COLOR = '#4cd964';
+const SHIELD_COLOR = '#9a8cff';
+const DOUBLE_DAMAGE_COLOR = '#ffcf33';
+const NUKE_FLASH_DURATION = 0.35; // detik kilatan putih-merah saat nuke
+const NUKE_WAVE_RADIUS = 700; // gelombang ledakan yang menyapu layar
+let nukeFlash = 0;
+
 // Buff aura (saat ambil item) & efek ultimate
 let buffAuras = []; // { playerId, color, life, maxLife }
 const BUFF_AURA_DURATION = 1.2;
@@ -152,6 +168,9 @@ const ULT_BEAM_HALF_WIDTH = 13;
 const AMBIENT_DARKNESS = 0.78; // 0 = terang, 1 = gelap total
 const PLAYER_LIGHT_RADIUS = 160; // jangkauan cahaya pemain
 const SHOOTER_LIGHT_RADIUS = 90; // musuh shooter memancarkan cahaya ungu redup
+// Mutator Toxic Fog: lebih gelap & cahaya pemain menyusut
+const TOXIC_FOG_DARKNESS = 0.92;
+const TOXIC_FOG_LIGHT_SCALE = 0.5;
 
 // --- Ultimate ---
 let ultimateMax = 100; // dari server (initGame)
@@ -175,7 +194,7 @@ const BULLET_SPRITE_SIZE_FACTOR = 2.4; // ukuran sprite peluru relatif terhadap 
 
 // --- Item drop & revive (visual) ---
 const ITEM_RADIUS = 10;
-const ITEM_ICON = { medkit: '+', speed: '»', damage: '✸' };
+const ITEM_ICON = { medkit: '💊', shield: '🛡️', nuke: '💣', doubleDamage: '⚡', speed: '»', damage: '✸' };
 const ITEM_PULSE_SPEED = 4; // kecepatan denyut glow (rad/detik)
 const REVIVE_RING_RADIUS = 20;
 
@@ -351,6 +370,9 @@ socket.on('initGame', ({ dungeonSeed, roomCode: code, name, difficulty, difficul
   tilemapCanvas = renderTilemap(dungeon);
   roomDifficulty = difficulty || 'medium';
   roomDifficultyLabel = difficultyLabel || 'Medium';
+  waveMutator = null;
+  lastAnnouncedWaveNumber = ''; // pengumuman wave tampil lagi di room baru
+  nukeFlash = 0;
   if (typeof ultMax === 'number') ultimateMax = ultMax;
   minimapCanvas = renderMinimap(dungeon);
   console.log('Dungeon seed:', dungeonSeed);
@@ -577,10 +599,27 @@ function handleServerEvents(events) {
         spawnParticles(ev.x, ev.y, '#4cd964', KILL_PARTICLE_OPTIONS);
         playHitSFX();
         break;
-      case 'pickup':
+      case 'pickup': {
         spawnParticles(ev.x, ev.y, ev.color || '#ffffff');
         // Aura buff di bawah kaki pemain yang mengambil item
         spawnBuffAura(ev.playerId, ev.color || '#ffffff');
+        // Medkit: angka "+N" hijau melayang di atas pemain yang pulih (jumlah HP yang benar-benar naik)
+        if (ev.heal > 0) {
+          const healed = renderPlayers[ev.playerId];
+          spawnFloatingText(healed ? healed.x : ev.x, (healed ? healed.y : ev.y) - PLAYER_RADIUS - 8,
+            `+${Math.round(ev.heal * 10) / 10} HP`, HEAL_NUMBER_COLOR, 18);
+        }
+        playHitSFX();
+        break;
+      }
+      case 'nuke':
+        nukeFlash = NUKE_FLASH_DURATION;
+        screenShake = Math.max(screenShake, SCREEN_SHAKE_MAGNITUDE * 2);
+        spawnShockwave(ev.x, ev.y, NUKE_WAVE_RADIUS);
+        break;
+      case 'shieldBreak':
+        spawnParticles(ev.x, ev.y, SHIELD_COLOR, KILL_PARTICLE_OPTIONS);
+        spawnFloatingText(ev.x, ev.y - PLAYER_RADIUS - 8, 'BLOCK', SHIELD_COLOR, 16);
         playHitSFX();
         break;
       case 'ultimate':
@@ -700,6 +739,15 @@ function drawMuzzleFlashes() {
 // -1, -4, -2.2 (maksimal 1 desimal, tanpa nol di belakang)
 const formatDamage = (damage) => `-${Math.round(damage * 10) / 10}`;
 
+// Teks melayang umum (heal, BLOCK, dll.): naik lalu memudar, memakai sistem damageNumbers
+function spawnFloatingText(x, y, text, color, size = 16) {
+  if (damageNumbers.length >= MAX_DAMAGE_NUMBERS) damageNumbers.shift();
+  damageNumbers.push({
+    x, y, vy: -DAMAGE_NUMBER_RISE_SPEED, text, color, crit: false, size,
+    life: DAMAGE_NUMBER_DURATION + 0.3, maxLife: DAMAGE_NUMBER_DURATION + 0.3, age: 0,
+  });
+}
+
 function spawnDamageNumber(x, y, damage, color, crit = false) {
   if (typeof damage !== 'number' || !Number.isFinite(damage) || damage <= 0) return;
   if (damageNumbers.length >= MAX_DAMAGE_NUMBERS) damageNumbers.shift();
@@ -787,6 +835,59 @@ function updateBuffAuras(dt) {
     buffAuras[i].life -= dt;
     if (buffAuras[i].life <= 0) buffAuras.splice(i, 1);
   }
+}
+
+// Aura yang menetap selama buff aktif: cahaya kuning berdenyut di bawah kaki (2x Damage).
+// Ring shield digambar terpisah di atas badan (lihat drawShieldRing).
+function drawPersistentAuras() {
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 6);
+  for (const id in renderPlayers) {
+    const p = renderPlayers[id];
+    if (p.isDowned || !(p.damageBoostLeft > 0)) continue;
+    // Berkedip cepat di 1 detik terakhir sebagai peringatan buff hampir habis
+    const ending = p.damageBoostLeft < 1;
+    const blink = ending ? (Math.floor(performance.now() / 120) % 2 === 0 ? 1 : 0.35) : 1;
+    const r = PLAYER_RADIUS + 8 + pulse * 4;
+    ctx.save();
+    ctx.globalAlpha = (0.55 + pulse * 0.25) * blink;
+    const g = ctx.createRadialGradient(p.x, p.y, r * 0.25, p.x, p.y, r);
+    g.addColorStop(0, DOUBLE_DAMAGE_COLOR);
+    g.addColorStop(1, 'rgba(255, 207, 51, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + PLAYER_RADIUS * 0.45, r, r * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Ring tipis berdenyut mengelilingi pemain yang memiliki shield
+function drawShieldRings() {
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 1000 * 4);
+  for (const id in renderPlayers) {
+    const p = renderPlayers[id];
+    if (p.isDowned || !p.shield) continue;
+    ctx.save();
+    ctx.shadowColor = SHIELD_COLOR;
+    ctx.shadowBlur = 8 + pulse * 8;
+    ctx.strokeStyle = SHIELD_COLOR;
+    ctx.globalAlpha = 0.6 + pulse * 0.3;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PLAYER_RADIUS + 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// Kilatan layar penuh saat Nuke meledak (putih memudar ke merah)
+function drawNukeFlash() {
+  if (nukeFlash <= 0) return;
+  const t = nukeFlash / NUKE_FLASH_DURATION; // 1 -> 0
+  ctx.save();
+  ctx.fillStyle = `rgba(255, ${Math.round(120 + 135 * t)}, ${Math.round(100 * t)}, ${0.65 * t})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
 }
 
 function drawBuffAuras() {
@@ -893,7 +994,29 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
-socket.on('stateUpdate', ({ players, projectiles, enemyProjectiles, enemies, items, wave: serverWave, waveState: serverWaveState, reviveTime, events }) => {
+// Pengumuman awal wave: tampil saat wave baru dimulai (atau diulang lewat Restart Wave),
+// berisi nomor wave dan mutator aktif (jika ada). Menghilang sendiri lewat animasi CSS.
+function maybeAnnounceWave(prevState) {
+  if (waveState !== 'IN_PROGRESS' || !inRoom) return;
+  const startedNow = prevState !== 'IN_PROGRESS' || `${wave}` !== lastAnnouncedWaveNumber;
+  if (!startedNow) return;
+  lastAnnouncedWaveNumber = `${wave}`;
+
+  const el = hud.announce;
+  hud.announceTitle.textContent = `WAVE ${wave}`;
+  hud.announceMutator.textContent = waveMutator ? waveMutator.label : '';
+  hud.announceDesc.textContent = waveMutator ? waveMutator.desc : '';
+  el.setAttribute('data-mutator', waveMutator ? waveMutator.id : '');
+  // Mulai ulang animasi CSS: sembunyikan, paksa reflow, tampilkan lagi
+  el.hidden = true;
+  void el.offsetWidth;
+  el.hidden = false;
+}
+let lastAnnouncedWaveNumber = '';
+
+socket.on('stateUpdate', ({ players, projectiles, enemyProjectiles, enemies, items, wave: serverWave, waveState: serverWaveState, mutator, reviveTime, events }) => {
+  const prevWaveState = waveState;
+  waveMutator = mutator || null;
   console.log('State received:', players);
 
   wave = serverWave;
@@ -901,6 +1024,7 @@ socket.on('stateUpdate', ({ players, projectiles, enemyProjectiles, enemies, ite
   // Overlay ditutup otomatis saat wave berikutnya dimulai
   if (waveState !== 'WAVE_CLEAR') upgradeOverlay.hidden = true;
   updateGameOverOverlay();
+  maybeAnnounceWave(prevWaveState);
 
   // Musuh diperlakukan seperti pemain lain: simpan target, posisi render di-lerp
   for (const { id, x, y, hp, maxHp, color, radius, type, isBoss } of enemies) {
@@ -927,8 +1051,8 @@ socket.on('stateUpdate', ({ players, projectiles, enemyProjectiles, enemies, ite
 
   // Simpan hanya target baru; posisi render diperbarui perlahan di loop render
   for (const id in players) {
-    const { x, y, name, color, hp, maxHp, speed, damage, fireRate, weaponClass, isDowned, reviveProgress, ultimate, aimAngle } = players[id];
-    const stats = { name, color, hp, maxHp, speed, damage, fireRate, weaponClass, isDowned, reviveProgress, ultimate };
+    const { x, y, name, color, hp, maxHp, speed, damage, fireRate, weaponClass, isDowned, reviveProgress, ultimate, shield, damageBoostLeft, aimAngle } = players[id];
+    const stats = { name, color, hp, maxHp, speed, damage, fireRate, weaponClass, isDowned, reviveProgress, ultimate, shield, damageBoostLeft };
     const targetAim = typeof aimAngle === 'number' ? aimAngle : 0;
     const entry = renderPlayers[id];
     if (entry) {
@@ -969,6 +1093,9 @@ socket.on('disconnect', () => {
   minimapCanvas = null;
   wave = 1;
   waveState = 'IN_PROGRESS';
+  waveMutator = null;
+  nukeFlash = 0;
+  hud.announce.hidden = true;
   hud.boss.hidden = true;
   gameOverOverlay.hidden = true;
   gameOverShown = false;
@@ -1016,6 +1143,7 @@ function update(dt) {
   updateTimed(meleeSlashes, dt);
   updateTimed(ultEffects, dt);
   updateBuffAuras(dt);
+  if (nukeFlash > 0) nukeFlash = Math.max(0, nukeFlash - dt);
   updateDamageNumbers(dt);
 
   // Kilatan damage & getaran kamera meluruh
@@ -1071,7 +1199,7 @@ function updateLocalPlayer(p, dt) {
   // Prediksi memakai collision yang sama dengan server agar tidak menembus dinding
   if (dungeon) {
     const speed = p.speed * TICKS_PER_SECOND; // piksel per detik
-    const next = Dungeon.moveWithCollision(
+    const next = Dungeon.slideMove(
       dungeon.grid, p.x, p.y, dx * speed * dt, dy * speed * dt, PLAYER_RADIUS
     );
     p.x = next.x;
@@ -1108,6 +1236,7 @@ function draw() {
   if (tilemapCanvas) ctx.drawImage(tilemapCanvas, 0, 0);
 
   drawBuffAuras(); // aura di lantai, paling bawah
+  drawPersistentAuras(); // aura 2x Damage selama buff aktif
   drawItems(); // item di lantai, di bawah musuh & pemain
   drawEnemies();
 
@@ -1146,6 +1275,7 @@ function draw() {
   drawEnemyProjectiles();
   drawMuzzleFlashes();
   drawMeleeSlashes();
+  drawShieldRings();
   drawUltEffects(); // laser/shockwave digambar sebelum lighting agar bersinar menembus gelap
   drawParticles();
 
@@ -1153,6 +1283,7 @@ function draw() {
   drawLighting();
 
   drawDamageNumbers(); // angka tetap terbaca di atas kegelapan
+  drawNukeFlash();
   ctx.restore(); // akhir getaran kamera
 
   drawMinimap();
@@ -1168,15 +1299,20 @@ function drawLighting() {
   const lc = getLightCanvas();
   const lctx = lc.getContext('2d');
 
+  // Mutator Toxic Fog: kabut hijau gelap, penglihatan jauh lebih sempit
+  const fog = !!waveMutator && waveMutator.id === 'toxicFog';
+  const darkness = fog ? TOXIC_FOG_DARKNESS : AMBIENT_DARKNESS;
+  const lightRadius = fog ? PLAYER_LIGHT_RADIUS * TOXIC_FOG_LIGHT_SCALE : PLAYER_LIGHT_RADIUS;
+
   lctx.clearRect(0, 0, lc.width, lc.height);
-  lctx.fillStyle = `rgba(0, 0, 0, ${AMBIENT_DARKNESS})`;
+  lctx.fillStyle = fog ? `rgba(6, 22, 8, ${darkness})` : `rgba(0, 0, 0, ${darkness})`;
   lctx.fillRect(0, 0, lc.width, lc.height);
 
   lctx.globalCompositeOperation = 'destination-out';
   // Cahaya pemain (lebih terang & luas)
   for (const id in renderPlayers) {
     if (renderPlayers[id].isDowned) continue;
-    punchLight(lctx, renderPlayers[id].x, renderPlayers[id].y, PLAYER_LIGHT_RADIUS, 1);
+    punchLight(lctx, renderPlayers[id].x, renderPlayers[id].y, lightRadius, 1);
   }
   // Cahaya musuh shooter (redup, menandai posisi penembak di kegelapan)
   for (const id in renderEnemies) {
@@ -1280,45 +1416,31 @@ function drawItems() {
   const pulse = 0.5 + 0.5 * Math.sin(now * ITEM_PULSE_SPEED); // 0..1
 
   for (const item of serverItems) {
-    // Glow berdenyut dengan warna tipe item (dipakai di sprite maupun fallback)
+    // Piringan gelap dengan glow berdenyut berwarna tipe item, lalu ikon emoji di tengah.
+    // Tiap tipe punya warna + ikon sendiri supaya mudah dibedakan sekilas.
     ctx.save();
     ctx.shadowColor = item.color;
     ctx.shadowBlur = 8 + pulse * 14;
-
-    if (sprites.ready('item')) {
-      // Semua tipe memakai sprite yang sama; warna tipe dibedakan lewat cincin luar + glow
-      const size = ITEM_RADIUS * 2.4;
-      ctx.drawImage(sprites.image('item'), item.x - size / 2, item.y - size / 2, size, size);
-      ctx.restore();
-
-      ctx.beginPath();
-      ctx.arc(item.x, item.y, ITEM_RADIUS + 4 + pulse * 3, 0, Math.PI * 2);
-      ctx.strokeStyle = item.color;
-      ctx.globalAlpha = 0.6 * (1 - pulse) + 0.2;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      continue;
-    }
-
-    // Fallback: lingkaran warna + cincin + ikon huruf
     ctx.beginPath();
-    ctx.arc(item.x, item.y, ITEM_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = item.color;
-    ctx.globalAlpha = 0.85;
+    ctx.arc(item.x, item.y, ITEM_RADIUS + 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(14, 14, 20, 0.88)';
     ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = item.color;
+    ctx.stroke();
     ctx.restore();
 
+    // Cincin luar berdenyut
     ctx.beginPath();
-    ctx.arc(item.x, item.y, ITEM_RADIUS + 3 + pulse * 3, 0, Math.PI * 2);
+    ctx.arc(item.x, item.y, ITEM_RADIUS + 6 + pulse * 4, 0, Math.PI * 2);
     ctx.strokeStyle = item.color;
-    ctx.globalAlpha = 0.4 * (1 - pulse);
+    ctx.globalAlpha = 0.5 * (1 - pulse);
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    ctx.fillStyle = '#0c0c0c';
-    ctx.font = 'bold 13px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '15px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(ITEM_ICON[item.type] || '?', item.x, item.y + 1);
@@ -1526,6 +1648,16 @@ function updateHud() {
   setText(hud.waveNumber, wave);
   setText(hud.difficulty, roomDifficultyLabel);
   setAttr(hud.difficulty, 'data-difficulty', roomDifficulty);
+
+  // Badge mutator wave aktif (tersembunyi jika tidak ada)
+  const hasMutator = !!waveMutator;
+  if (hud.mutatorBox.hidden === hasMutator) hud.mutatorBox.hidden = !hasMutator;
+  if (hud.mutatorDivider.hidden === hasMutator) hud.mutatorDivider.hidden = !hasMutator;
+  if (hasMutator) {
+    setText(hud.mutator, waveMutator.label);
+    setAttr(hud.mutator, 'data-mutator', waveMutator.id);
+    hud.mutatorBox.title = waveMutator.desc;
+  }
 
   // --- Boss (tengah atas): hanya tampil saat ada boss hidup ---
   let boss = null;

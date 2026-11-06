@@ -772,3 +772,131 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .hud-ultimate[data-ready="true"] { animation: none; }
 }
+
+/* ==========================================================================
+   Wave announce + badge mutator
+   ========================================================================== */
+.wave-announce {
+  position: absolute;
+  top: 24%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 520px;
+  max-width: 90%;
+  padding: 16px 20px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(10, 8, 14, 0.82), rgba(10, 8, 14, 0.55));
+  border-top: 1px solid rgba(212, 175, 82, 0.6);
+  border-bottom: 1px solid rgba(212, 175, 82, 0.6);
+  animation: wave-announce 3.2s ease-out forwards;
+}
+.wave-announce[hidden] { display: none; }
+.wave-announce-title {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #f1dfa6;
+  text-shadow: 0 0 14px rgba(212, 175, 82, 0.5);
+}
+.wave-announce-mutator {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.wave-announce-desc {
+  margin-top: 4px;
+  font-size: 13px;
+  font-style: italic;
+  color: #cfc6b0;
+}
+.wave-announce[data-mutator="toxicFog"] .wave-announce-mutator { color: #7bd66a; text-shadow: 0 0 12px rgba(123, 214, 106, 0.6); }
+.wave-announce[data-mutator="frenzy"]   .wave-announce-mutator { color: #ff6a4d; text-shadow: 0 0 12px rgba(255, 106, 77, 0.6); }
+.wave-announce[data-mutator="armored"]  .wave-announce-mutator { color: #9fb4cc; text-shadow: 0 0 12px rgba(159, 180, 204, 0.6); }
+
+@keyframes wave-announce {
+  0%   { opacity: 0; transform: translateX(-50%) scale(1.15); }
+  12%  { opacity: 1; transform: translateX(-50%) scale(1); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wave-announce { animation: none; }
+}
+
+.hud-mutator strong { font-size: 13px; }
+.hud-mutator-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #0c0c10;
+}
+.hud-mutator-badge[data-mutator="toxicFog"] { background: #7bd66a; }
+.hud-mutator-badge[data-mutator="frenzy"]   { background: #ff6a4d; }
+.hud-mutator-badge[data-mutator="armored"]  { background: #9fb4cc; }
+
+/* ==========================================================================
+   Watermark & footer lobby
+   ========================================================================== */
+.lobby-watermark {
+  position: absolute;
+  top: 18px;
+  right: 26px;
+  z-index: 2;
+  margin: 0;
+  font-family: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #8f8674;
+  /* Garis emas tipis di bawah teks, seperti cap tinta */
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(212, 175, 82, 0.45);
+  pointer-events: none;
+  user-select: none;
+}
+.lobby-watermark span {
+  font-weight: 700;
+  font-size: 15px;
+  background: linear-gradient(180deg, #f6e7b0, #d4af52 55%, #8a6c2a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 12px rgba(212, 175, 82, 0.35);
+}
+
+.lobby-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  z-index: 2;
+  text-align: center;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.1em;
+  color: #6f6757;
+  pointer-events: none;
+}
+.lobby-footer::before,
+.lobby-footer::after {
+  content: '';
+  display: inline-block;
+  width: 36px;
+  height: 1px;
+  margin: 0 12px;
+  vertical-align: middle;
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 82, 0.5));
+}
+.lobby-footer::after { transform: scaleX(-1); }
+
+/* Ruang aman atas/bawah supaya watermark & footer tidak menimpa panel di layar pendek */
+.lobby-screen {
+  box-sizing: border-box;
+  padding: 56px 16px 52px;
+}

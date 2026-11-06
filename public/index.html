@@ -13,6 +13,9 @@
     <canvas id="emberCanvas" class="ember-canvas" aria-hidden="true"></canvas>
     <div class="lobby-vignette" aria-hidden="true"></div>
 
+    <!-- Watermark kredit di pojok kanan atas -->
+    <p class="lobby-watermark">Created by <span>Jik</span></p>
+
     <div class="lobby-panel">
       <header class="lobby-header">
         <h1 id="lobbyTitle" class="game-title">ASHFALL ARENA</h1>
@@ -83,6 +86,9 @@
       <p id="lobbyMessage" role="alert"></p>
       <p id="status" class="lobby-status">Menghubungkan...</p>
     </div>
+
+    <!-- Footer kredit di bagian paling bawah lobby -->
+    <footer class="lobby-footer">Game ini dibuat dengan bantuan AI</footer>
   </main>
 
   <div id="gameContainer" class="game-container" hidden>
@@ -129,8 +135,21 @@
           <span class="hud-label">Difficulty</span>
           <strong id="hudDifficulty" class="hud-diff-badge" data-difficulty="medium">Medium</strong>
         </div>
+        <!-- Mutator wave aktif (disembunyikan jika wave tanpa mutator) -->
+        <span class="hud-divider" aria-hidden="true" id="hudMutatorDivider" hidden></span>
+        <div class="hud-mutator" id="hudMutatorBox" hidden>
+          <span class="hud-label">Mutator</span>
+          <strong id="hudMutator" class="hud-mutator-badge" data-mutator="">-</strong>
+        </div>
         <span id="hudCopyStatus" class="visually-hidden" role="status" aria-live="polite"></span>
       </section>
+
+      <!-- Pengumuman awal wave + mutator; muncul beberapa detik lalu memudar -->
+      <div id="waveAnnounce" class="wave-announce" role="status" aria-live="polite" hidden>
+        <div id="waveAnnounceTitle" class="wave-announce-title"></div>
+        <div id="waveAnnounceMutator" class="wave-announce-mutator"></div>
+        <div id="waveAnnounceDesc" class="wave-announce-desc"></div>
+      </div>
 
       <!-- Tengah atas: boss (hanya saat wave boss & boss hidup) -->
       <section id="hudBoss" class="hud-panel hud-boss" aria-label="Boss" hidden>

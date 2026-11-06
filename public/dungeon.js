@@ -185,6 +185,34 @@
     return { x: nx, y: ny };
   }
 
+  // Gerak pemain dengan sliding yang menjaga kecepatan. moveWithCollision memisahkan sumbu X
+  // dan Y, tapi saat gerak diagonal menabrak dinding, komponen sumbu yang terhalang terbuang
+  // sehingga pemain meluncur hanya ~70% kecepatan dan terasa "mentok". Di sini sisa gerakan
+  // itu disalurkan ke sumbu yang bebas, jadi meluncur menyusur dinding terasa penuh.
+  // Dipakai server dan client agar hasilnya identik.
+  function slideMove(grid, x, y, moveX, moveY, half) {
+    const first = moveWithCollision(grid, x, y, moveX, moveY, half);
+    const dx = first.x - x;
+    const dy = first.y - y;
+    const blockedX = Math.abs(moveX) > 1e-9 && Math.abs(dx) < Math.abs(moveX) * 0.5;
+    const blockedY = Math.abs(moveY) > 1e-9 && Math.abs(dy) < Math.abs(moveY) * 0.5;
+
+    // Tidak ada yang terhalang, atau keduanya terhalang (sudut): tidak ada yang disalurkan
+    if (blockedX === blockedY) return first;
+
+    // Panjang langkah total dijaga sama dengan kecepatan normal: sumbu yang terhalang masih
+    // bisa bergerak sedikit (dx/dy), jadi sumbu bebas hanya mendapat sisanya (Pythagoras).
+    const total = Math.hypot(moveX, moveY);
+    if (blockedX) {
+      if (Math.abs(moveY) < 1e-9) return first; // gerak murni horizontal: tak ada yang dialihkan
+      const wantY = Math.sign(moveY) * Math.sqrt(Math.max(0, total * total - dx * dx));
+      return moveWithCollision(grid, first.x, first.y, 0, wantY - dy, half);
+    }
+    if (Math.abs(moveX) < 1e-9) return first;
+    const wantX = Math.sign(moveX) * Math.sqrt(Math.max(0, total * total - dy * dy));
+    return moveWithCollision(grid, first.x, first.y, wantX - dx, 0, half);
+  }
+
   return {
     COLS,
     ROWS,
@@ -194,5 +222,6 @@
     generate,
     collidesWithWall,
     moveWithCollision,
+    slideMove,
   };
 });
