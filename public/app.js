@@ -1081,6 +1081,12 @@ socket.on('stateUpdate', ({ players, projectiles, enemyProjectiles, enemies, ite
 });
 
 // Koneksi putus berarti keanggotaan room di server hilang, jadi kembali ke lobby
+socket.on('itemPickedUp', ({ itemId }) => {
+  // Hapus item dari list lokal segera, sebelum stateUpdate berikutnya datang,
+  // sehingga visual item di canvas langsung lenyap tanpa jeda.
+  serverItems = serverItems.filter((it) => it.id !== itemId);
+});
+
 socket.on('disconnect', () => {
   statusEl.textContent = 'Terputus dari server. Menghubungkan ulang...';
   for (const id in renderPlayers) delete renderPlayers[id];

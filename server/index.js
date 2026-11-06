@@ -1186,7 +1186,12 @@ function spawnItem(room, x, y, typeKey = pickRandomItemType()) {
   });
 }
 
-// Item kedaluwarsa dihapus; item yang disentuh pemain aktif memberi efek lalu hilang
+// Radius pickup: lingkaran jarak antara pusat pemain dan pusat item.
+// Lebih besar dari PLAYER_RADIUS + ITEM_RADIUS agar terasa responsif meski ada lag.
+const ITEM_PICKUP_RADIUS = PLAYER_RADIUS + ITEM_RADIUS + 10; // 15 + 10 + 10 = 35 px
+
+// Item kedaluwarsa dihapus; item yang disentuh pemain aktif memberi efek lalu hilang.
+// Deteksi pakai jarak Euclidean (bukan AABB) agar sesuai tampilan lingkaran di canvas.
 function updateItems(room, dt) {
   for (let i = room.items.length - 1; i >= 0; i--) {
     const item = room.items[i];
@@ -1199,16 +1204,25 @@ function updateItems(room, dt) {
 
     const type = ITEM_TYPES[item.type];
     const picker = getAlivePlayers(room).find(
-      (p) => overlapsAABB(p.x, p.y, PLAYER_RADIUS, item.x, item.y, ITEM_RADIUS) &&
+      (p) =>
+        Math.hypot(p.x - item.x, p.y - item.y) < ITEM_PICKUP_RADIUS &&
         (!type.canPickup || type.canPickup(p))
     );
     if (picker) {
       const result = type.apply(picker, room) || {};
       room.items.splice(i, 1);
+
+      // Kliping HP agar tidak melebihi maxHp (medkit sudah melakukan ini, tapi jaga-jaga)
+      if (item.type === 'medkit') {
+        picker.hp = Math.min(picker.maxHp, Math.max(0, picker.hp));
+      }
+
       pushEvent(room, {
         type: 'pickup', itemType: item.type, playerId: picker.id,
         x: item.x, y: item.y, color: item.color, heal: result.heal || 0,
       });
+      // Event terpisah untuk client yang ingin langsung menyembunyikan visual item
+      io.to(room.code).emit('itemPickedUp', { itemId: item.id, playerId: picker.id });
     }
   }
 }
