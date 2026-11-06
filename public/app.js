@@ -1011,8 +1011,17 @@ function maybeAnnounceWave(prevState) {
   el.hidden = true;
   void el.offsetWidth;
   el.hidden = false;
+
+  // Auto-hide: batalkan timer lama (wave berganti cepat), lalu sembunyikan total setelah 2,5 detik
+  clearTimeout(announceHideTimer);
+  announceHideTimer = setTimeout(() => {
+    el.hidden = true;
+    announceHideTimer = null;
+  }, WAVE_ANNOUNCE_DURATION_MS);
 }
 let lastAnnouncedWaveNumber = '';
+let announceHideTimer = null;
+const WAVE_ANNOUNCE_DURATION_MS = 2500;
 
 socket.on('stateUpdate', ({ players, projectiles, enemyProjectiles, enemies, items, wave: serverWave, waveState: serverWaveState, mutator, reviveTime, events }) => {
   const prevWaveState = waveState;
@@ -1096,6 +1105,7 @@ socket.on('disconnect', () => {
   waveMutator = null;
   nukeFlash = 0;
   hud.announce.hidden = true;
+  clearTimeout(announceHideTimer);
   hud.boss.hidden = true;
   gameOverOverlay.hidden = true;
   gameOverShown = false;

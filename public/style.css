@@ -788,7 +788,9 @@ body {
   background: linear-gradient(180deg, rgba(10, 8, 14, 0.82), rgba(10, 8, 14, 0.55));
   border-top: 1px solid rgba(212, 175, 82, 0.6);
   border-bottom: 1px solid rgba(212, 175, 82, 0.6);
-  animation: wave-announce 3.2s ease-out forwards;
+  pointer-events: none;
+  /* Durasi selaras dengan auto-hide JS (2,5 dtk); fade-out selesai tepat saat elemen disembunyikan */
+  animation: wave-announce 2.5s ease-out forwards;
 }
 .wave-announce[hidden] { display: none; }
 .wave-announce-title {
@@ -819,8 +821,8 @@ body {
 @keyframes wave-announce {
   0%   { opacity: 0; transform: translateX(-50%) scale(1.15); }
   12%  { opacity: 1; transform: translateX(-50%) scale(1); }
-  78%  { opacity: 1; }
-  100% { opacity: 0; }
+  70%  { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
   .wave-announce { animation: none; }
